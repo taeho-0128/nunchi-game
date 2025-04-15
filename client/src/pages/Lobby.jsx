@@ -118,8 +118,9 @@ export default function Lobby() {
 
       {status === "lobby" && isHost && <button onClick={startGame}>게임 시작</button>}
       {status === "waiting" && <p>곧 버튼을 누르라는 문구가 표시됩니다...</p>}
+      {status === "go" && <p style={{ fontSize: "1.5rem", fontWeight: "bold" }}>버튼을 누르세요!</p>}
       {(status === "waiting" || status === "go") && (
-        <button onClick={clickButton}>버튼 누르기</button>
+        <button onClick={clickButton}>버튼</button>
       )}
 
       {status === "result" && (
