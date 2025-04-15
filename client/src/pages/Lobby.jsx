@@ -109,20 +109,21 @@ export default function Lobby() {
       <p>현재 입장한 인원: {users.length}명</p>
       <ul>
         {users.map(u => (
-          <li key={u.id}>
-            {u.name}
-          </li>
+          <li key={u.id}>{u.name}</li>
         ))}
       </ul>
 
       {status === "lobby" && isHost && <button onClick={startGame}>게임 시작</button>}
-      <div style={{ marginTop: "1rem" }}>
-        {status === "waiting" && <p>곧 버튼을 누르라는 문구가 표시됩니다...</p>}
-        {status === "go" && <p style={{ fontSize: "1.5rem", fontWeight: "bold" }}>버튼을 누르세요!</p>}
-        {(status === "waiting" || status === "go") && (
+
+      {(status === "waiting" || status === "go") && (
+        <>
+          <p style={{ minHeight: "2em", fontSize: "1rem" }}>
+            {status === "waiting" && "곧 버튼을 누르라는 문구가 표시됩니다..."}
+            {status === "go" && "버튼을 누르세요!"}
+          </p>
           <button onClick={clickButton}>버튼</button>
-        )}
-      </div>
+        </>
+      )}
 
       {status === "result" && (
         <div>
