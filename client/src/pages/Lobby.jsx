@@ -1,17 +1,23 @@
+// 서버 (server/index.js)
+// ... (기존 서버 코드는 변경 없음)
+
+// 클라이언트 React 예시 (client/src/pages/Lobby.jsx)
 import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
-import "../index.css";
+import "./Lobby.css";
 
 const socket = io("https://nunchi-game-server.onrender.com");
 
 export default function Lobby() {
   const [nickname, setNickname] = useState("");
+  const [nicknameConfirmed, setNicknameConfirmed] = useState(false);
   const [roomCode, setRoomCode] = useState("");
   const [inRoom, setInRoom] = useState(false);
   const [users, setUsers] = useState([]);
   const [isHost, setIsHost] = useState(false);
   const [status, setStatus] = useState("lobby");
   const [results, setResults] = useState([]);
+  const [canClick, setCanClick] = useState(false);
 
   const createRoom = () => {
     socket.emit("create_room", nickname, ({ success, code }) => {
@@ -39,36 +45,49 @@ export default function Lobby() {
   };
 
   const clickButton = () => {
-    socket.emit("click_button", roomCode);
+    if (!canClick && status === "waiting") {
+      socket.emit("click_button", roomCode, true); // 조기 클릭
+    } else if (canClick && status === "go") {
+      socket.emit("click_button", roomCode, false); // 정상 클릭
+    }
   };
 
   useEffect(() => {
     socket.on("room_update", (userList) => setUsers(userList));
-    socket.on("game_waiting", () => setStatus("waiting"));
-    socket.on("game_go", () => setStatus("go"));
+    socket.on("game_waiting", () => {
+      setStatus("waiting");
+      setCanClick(false);
+    });
+    socket.on("game_go", () => {
+      setStatus("go");
+      setCanClick(true);
+    });
     socket.on("game_result", (data) => {
       setResults(data);
       setStatus("result");
+      setCanClick(false);
     });
     socket.on("game_reset", () => {
       setResults([]);
       setStatus("lobby");
+      setCanClick(false);
     });
   }, []);
 
-  if (!nickname) {
+  if (!nicknameConfirmed) {
     return (
       <div className="container">
-        <h2>눈치게임</h2>
-        <p>닉네임을 먼저 입력해주세요</p>
+        <h2>닉네임을 입력하세요</h2>
         <input
-          placeholder="닉네임"
+          placeholder="닉네임 (최대 20자)"
           value={nickname}
-          onChange={e => {
-            const value = e.target.value;
-            if (value.length <= 20) setNickname(value);
-          }}
+          maxLength={20}
+          onChange={e => setNickname(e.target.value)}
         />
+        <button onClick={() => {
+          if (nickname.trim() === "") alert("닉네임을 입력하세요");
+          else setNicknameConfirmed(true);
+        }}>입력 완료</button>
       </div>
     );
   }
@@ -77,11 +96,6 @@ export default function Lobby() {
     return (
       <div className="container">
         <h2>눈치게임</h2>
-        <input
-          placeholder="닉네임"
-          value={nickname}
-          disabled
-        />
         <button onClick={createRoom}>방 만들기</button>
         <input placeholder="초대 코드" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
         <button onClick={joinRoom}>입장</button>
@@ -103,8 +117,11 @@ export default function Lobby() {
       </ul>
 
       {status === "lobby" && isHost && <button onClick={startGame}>게임 시작</button>}
-      {status === "waiting" && <p>곧 버튼이 나타납니다...</p>}
-      {status === "go" && <button onClick={clickButton}>지금 눌러!</button>}
+      {status === "waiting" && <p>곧 버튼을 누르라는 문구가 표시됩니다...</p>}
+      {(status === "waiting" || status === "go") && (
+        <button onClick={clickButton}>버튼 누르기</button>
+      )}
+
       {status === "result" && (
         <div>
           <h4>결과</h4>
