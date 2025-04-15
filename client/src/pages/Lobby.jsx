@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
+import "../index.css";
 
 const socket = io("https://nunchi-game-server.onrender.com");
 
@@ -55,11 +56,32 @@ export default function Lobby() {
     });
   }, []);
 
+  if (!nickname) {
+    return (
+      <div className="container">
+        <h2>눈치게임</h2>
+        <p>닉네임을 먼저 입력해주세요</p>
+        <input
+          placeholder="닉네임"
+          value={nickname}
+          onChange={e => {
+            const value = e.target.value;
+            if (value.length <= 20) setNickname(value);
+          }}
+        />
+      </div>
+    );
+  }
+
   if (!inRoom) {
     return (
       <div className="container">
         <h2>눈치게임</h2>
-        <input placeholder="닉네임" value={nickname} onChange={e => setNickname(e.target.value)} />
+        <input
+          placeholder="닉네임"
+          value={nickname}
+          disabled
+        />
         <button onClick={createRoom}>방 만들기</button>
         <input placeholder="초대 코드" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
         <button onClick={joinRoom}>입장</button>
