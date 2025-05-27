@@ -10,6 +10,7 @@ export default function Lobby() {
   const [nickname, setNickname] = useState("");
   const [nicknameConfirmed, setNicknameConfirmed] = useState(false);
   const [roomCode, setRoomCode] = useState("");
+  const [roomName, setRoomName] = useState("");
   const [inRoom, setInRoom] = useState(false);
   const [users, setUsers] = useState([]);
   const [isHost, setIsHost] = useState(false);
@@ -19,10 +20,13 @@ export default function Lobby() {
   const [selectedGame, setSelectedGame] = useState("reaction");
   const [roomList, setRoomList] = useState([]);
 
-  // 방 생성시 자동으로 "{닉네임}님의 방" 이름 생성
+  // 방 만들때 직접 방 이름 입력 받는 구조
   const createRoom = () => {
-    const generatedRoomName = `${nickname}님의 방`;
-    socket.emit("create_room", { nickname, roomName: generatedRoomName }, ({ success, code }) => {
+    if (roomName.trim() === "") {
+      alert("방 이름을 입력하세요");
+      return;
+    }
+    socket.emit("create_room", { nickname, roomName }, ({ success, code }) => {
       if (success) {
         setRoomCode(code);
         setIsHost(true);
@@ -108,6 +112,12 @@ export default function Lobby() {
     return (
       <div className="container">
         <h1>🌲 미니 게임 포레스트</h1>
+        <input
+          placeholder="방 이름 (최대 20자)"
+          value={roomName}
+          maxLength={20}
+          onChange={e => setRoomName(e.target.value)}
+        />
         <button onClick={createRoom}>방 만들기</button>
         <input placeholder="초대 코드" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
         <button onClick={joinRoom}>입장</button>
@@ -140,7 +150,11 @@ export default function Lobby() {
       {status === "lobby" && isHost && (
         <>
           <p>게임을 선택해 주세요.</p>
-          <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)} style={{ fontSize: "1rem", padding: "0.3rem" }}>
+          <select
+            value={selectedGame}
+            onChange={(e) => setSelectedGame(e.target.value)}
+            style={{ fontSize: "1rem", padding: "0.3rem" }}
+          >
             <option value="reaction">반응속도 테스트</option>
           </select>
           <div style={{ marginTop: '0.5rem' }}>
@@ -164,7 +178,10 @@ export default function Lobby() {
           <h4>결과</h4>
           <ol>
             {results.map((r) => (
-              <li key={r.id} className={r.status === "실격" ? "disqualified" : "qualified"}>
+              <li
+                key={r.id}
+                className={r.status === "실격" ? "disqualified" : "qualified"}
+              >
                 {r.name} - {r.status}{r.time !== null ? ` (${r.time}ms)` : ""}
               </li>
             ))}
