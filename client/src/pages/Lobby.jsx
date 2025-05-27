@@ -59,7 +59,9 @@ export default function Lobby() {
       socket.emit("click_button", roomCode, false);
     }
   };
-
+  useEffect(() => {
+    document.title = "🌲 미니 게임 포레스트";
+  }, []);
   useEffect(() => {
     socket.on("room_update", (userList) => setUsers(userList));
     socket.on("game_waiting", () => {
