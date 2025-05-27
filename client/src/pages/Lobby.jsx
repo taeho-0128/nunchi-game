@@ -19,7 +19,6 @@ export default function Lobby() {
   const [selectedGame, setSelectedGame] = useState("reaction");
   const [roomList, setRoomList] = useState([]);
 
-  // 방 이름 없이 단순 방 생성
   const createRoom = () => {
     socket.emit("create_room", { nickname }, ({ success, code }) => {
       if (success) {
