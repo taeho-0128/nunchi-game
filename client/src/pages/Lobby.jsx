@@ -1,7 +1,3 @@
-// 서버 (server/index.js)
-// ... (기존 서버 코드는 변경 없음)
-
-// 클라이언트 React 예시 (client/src/pages/Lobby.jsx)
 import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
 import "./Lobby.css";
@@ -22,12 +18,18 @@ export default function Lobby() {
   const [roomList, setRoomList] = useState([]);
 
   const createRoom = () => {
+    if (nickname.trim() === "") {
+      alert("닉네임을 먼저 입력해주세요.");
+      return;
+    }
     const generatedRoomName = `${nickname}님의 방`;
-    socket.emit("create_room", { nickname, roomName: generatedRoomName }, ({ success, code }) => {
+    socket.emit("create_room", { nickname, roomName: generatedRoomName }, ({ success, code, message }) => {
       if (success) {
         setRoomCode(code);
         setInRoom(true);
         setIsHost(true);
+      } else {
+        alert(message || "방 생성에 실패했습니다.");
       }
     });
   };
@@ -59,6 +61,10 @@ export default function Lobby() {
       socket.emit("click_button", roomCode, false);
     }
   };
+
+  useEffect(() => {
+    document.title = "🌲 미니 게임 포레스트";
+  }, []);
 
   useEffect(() => {
     socket.on("room_update", (userList) => setUsers(userList));
@@ -139,7 +145,11 @@ export default function Lobby() {
       {status === "lobby" && isHost && (
         <>
           <p>게임을 선택해 주세요.</p>
-          <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)} style={{ fontSize: "1rem", padding: "0.3rem" }}>
+          <select
+            value={selectedGame}
+            onChange={(e) => setSelectedGame(e.target.value)}
+            style={{ fontSize: "1rem", padding: "0.3rem" }}
+          >
             <option value="reaction">반응속도 테스트</option>
           </select>
           <div style={{ marginTop: '0.5rem' }}>
