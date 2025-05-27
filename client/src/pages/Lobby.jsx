@@ -78,6 +78,7 @@ export default function Lobby() {
   if (!nicknameConfirmed) {
     return (
       <div className="container">
+        <h1>🌲 미니 게임 포레스트</h1>
         <h2>닉네임을 입력하세요</h2>
         <input
           placeholder="닉네임 (최대 20자)"
@@ -96,6 +97,7 @@ export default function Lobby() {
   if (!inRoom) {
     return (
       <div className="container">
+        <h1>🌲 미니 게임 포레스트</h1>
         <h2>눈치게임</h2>
         <button onClick={createRoom}>방 만들기</button>
         <input placeholder="초대 코드" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
@@ -106,6 +108,7 @@ export default function Lobby() {
 
   return (
     <div className="container">
+      <h1>🌲 미니 게임 포레스트</h1>
       <h3>방 코드: {roomCode}</h3>
       <p>현재 입장한 인원: {users.length}명</p>
       <ul>
@@ -121,7 +124,9 @@ export default function Lobby() {
             <option value="reaction">반응속도 테스트</option>
             {/* 다른 게임이 추가되면 아래에 option을 추가 */}
           </select>
-          <button onClick={startGame}>게임 시작</button>
+          <div style={{ marginTop: '0.5rem' }}>
+            <button onClick={startGame}>게임 시작</button>
+          </div>
         </>
       )}
 
