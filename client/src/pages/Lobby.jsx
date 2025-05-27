@@ -1,12 +1,10 @@
-// 서버 (server/index.js)
-// ... (기존 서버 코드는 변경 없음)
-
-// 클라이언트 React 예시 (client/src/pages/Lobby.jsx)
 import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
 import "./Lobby.css";
 
 const socket = io("https://nunchi-game-server.onrender.com");
+
+document.title = "🌲 미니 게임 포레스트";
 
 export default function Lobby() {
   const [nickname, setNickname] = useState("");
