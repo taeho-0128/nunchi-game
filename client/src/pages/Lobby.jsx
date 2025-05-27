@@ -1,7 +1,3 @@
-// 서버 (server/index.js)
-// ... (기존 서버 코드는 변경 없음)
-
-// 클라이언트 React 예시 (client/src/pages/Lobby.jsx)
 import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
 import "./Lobby.css";
@@ -28,6 +24,11 @@ export default function Lobby() {
         setRoomCode(code);
         setInRoom(true);
         setIsHost(true);
+
+        // ✅ 방 생성 후 자기 자신을 다시 입장시켜서 room_update 보장
+        socket.emit("join_room", { code, nickname }, ({ success, message }) => {
+          if (!success) alert(message);
+        });
       }
     });
   };
@@ -59,9 +60,11 @@ export default function Lobby() {
       socket.emit("click_button", roomCode, false);
     }
   };
+
   useEffect(() => {
     document.title = "🌲 미니 게임 포레스트";
   }, []);
+
   useEffect(() => {
     socket.on("room_update", (userList) => setUsers(userList));
     socket.on("game_waiting", () => {
