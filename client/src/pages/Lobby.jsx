@@ -13,21 +13,22 @@ export default function Lobby() {
   const [inRoom, setInRoom] = useState(false);
   const [users, setUsers] = useState([]);
   const [isHost, setIsHost] = useState(false);
-  const [status, setStatus] = useState("lobby"); // lobby, waiting, go, result, gamble_result
+  const [status, setStatus] = useState("lobby"); // lobby, waiting, go, result, gamble_playing, gamble_result
   const [results, setResults] = useState([]);
   const [canClick, setCanClick] = useState(false);
   const [selectedGame, setSelectedGame] = useState("reaction");
   const [roomList, setRoomList] = useState([]);
 
-  // 추가: 도박 게임 상태
+  // 도박 게임 상태
   const [gambleRound, setGambleRound] = useState(0);
-  const [gambleResults, setGambleResults] = useState([]);
-  const [gambleSelected, setGambleSelected] = useState(null);
+  const [gambleScores, setGambleScores] = useState({});
+  const [gambleChoice, setGambleChoice] = useState(null);
   const [gambleTimer, setGambleTimer] = useState(15);
   const gambleTimerRef = useRef(null);
 
   const createRoom = () => {
-    socket.emit("create_room", { nickname }, ({ success, code }) => {
+    const generatedRoomName = `${nickname}님의 방`;
+    socket.emit("create_room", { nickname, roomName: generatedRoomName }, ({ success, code }) => {
       if (success) {
         setRoomCode(code);
         setIsHost(true);
@@ -56,10 +57,13 @@ export default function Lobby() {
 
   const restartGame = () => {
     socket.emit("restart_game", roomCode);
-    setGambleRound(0);
-    setGambleResults([]);
-    setGambleSelected(null);
     setStatus("lobby");
+    setResults([]);
+    setGambleScores({});
+    setGambleChoice(null);
+    setGambleRound(0);
+    if (gambleTimerRef.current) clearInterval(gambleTimerRef.current);
+    setGambleTimer(15);
   };
 
   const clickButton = () => {
@@ -70,11 +74,10 @@ export default function Lobby() {
     }
   };
 
-  // 도박 게임 버튼 선택
   const gambleSelect = (btn) => {
-    if (gambleSelected || status !== "gamble_playing") return;
-    setGambleSelected(btn);
-    socket.emit("gamble_select", { code: roomCode, button: btn });
+    if (gambleChoice || status !== "gamble_playing") return;
+    setGambleChoice(btn);
+    socket.emit("gamble_choice", { code: roomCode, choice: btn });
   };
 
   useEffect(() => {
@@ -96,18 +99,22 @@ export default function Lobby() {
       setResults([]);
       setStatus("lobby");
       setCanClick(false);
+      setGambleScores({});
+      setGambleChoice(null);
+      setGambleRound(0);
+      if (gambleTimerRef.current) clearInterval(gambleTimerRef.current);
+      setGambleTimer(15);
     });
     socket.on("room_list", (list) => setRoomList(list));
     socket.emit("get_room_list");
 
     // 도박 게임 이벤트
-    socket.on("gamble_start_round", ({ round }) => {
+    socket.on("gamble_start", ({ round }) => {
       setStatus("gamble_playing");
       setGambleRound(round);
-      setGambleSelected(null);
-      setGambleResults([]);
+      setGambleChoice(null);
+      setGambleScores({});
       setGambleTimer(15);
-
       if (gambleTimerRef.current) clearInterval(gambleTimerRef.current);
       gambleTimerRef.current = setInterval(() => {
         setGambleTimer((t) => {
@@ -120,27 +127,23 @@ export default function Lobby() {
       }, 1000);
     });
 
-    socket.on("gamble_round_result", ({ round, results }) => {
-      setStatus("gamble_round_result");
-      setGambleResults(results);
-    });
-
-    socket.on("gamble_game_result", (finalResults) => {
-      setStatus("gamble_game_result");
-      setGambleResults(finalResults);
+    socket.on("gamble_scores", (scores) => {
+      setGambleScores(scores);
+      setStatus("gamble_result");
+      if (gambleTimerRef.current) clearInterval(gambleTimerRef.current);
+      setGambleTimer(0);
     });
 
     return () => {
-      if (gambleTimerRef.current) clearInterval(gambleTimerRef.current);
       socket.off("room_update");
       socket.off("game_waiting");
       socket.off("game_go");
       socket.off("game_result");
       socket.off("game_reset");
       socket.off("room_list");
-      socket.off("gamble_start_round");
-      socket.off("gamble_round_result");
-      socket.off("gamble_game_result");
+      socket.off("gamble_start");
+      socket.off("gamble_scores");
+      if (gambleTimerRef.current) clearInterval(gambleTimerRef.current);
     };
   }, []);
 
@@ -151,8 +154,8 @@ export default function Lobby() {
         <h2>닉네임을 입력하세요</h2>
         <input
           placeholder="닉네임 (최대 20자)"
-          value={nickname}
           maxLength={20}
+          value={nickname}
           onChange={(e) => setNickname(e.target.value)}
         />
         <button
@@ -193,8 +196,6 @@ export default function Lobby() {
     );
   }
 
-  // === 게임 화면 ===
-
   return (
     <div className="container">
       <h1>🌲 미니 게임 포레스트</h1>
@@ -206,7 +207,6 @@ export default function Lobby() {
         ))}
       </ul>
 
-      {/* 게임 선택 및 시작 (호스트만) */}
       {status === "lobby" && isHost && (
         <>
           <p>게임을 선택해 주세요.</p>
@@ -224,7 +224,7 @@ export default function Lobby() {
         </>
       )}
 
-      {/* 반응속도 테스트 게임 진행중 */}
+      {/* 반응속도 테스트 진행 */}
       {(status === "waiting" || status === "go") && selectedGame === "reaction" && (
         <>
           <p style={{ minHeight: "2em", fontSize: "1rem" }}>
@@ -254,56 +254,47 @@ export default function Lobby() {
         </div>
       )}
 
-      {/* 눈치 보고 도박하기 게임 진행 중 */}
+      {/* 눈치 보고 도박하기 진행 중 */}
       {status === "gamble_playing" && selectedGame === "gamble" && (
         <div>
           <h4>라운드 {gambleRound} / 5</h4>
           <p>15초 안에 버튼 하나를 선택하세요.</p>
           <p>남은 시간: {gambleTimer}초</p>
           <div style={{ display: "flex", gap: "1rem" }}>
-            <button disabled={!!gambleSelected} onClick={() => gambleSelect("A")}>
+            <button disabled={!!gambleChoice} onClick={() => gambleSelect("A")}>
               A버튼: 5원 얻기
             </button>
-            <button disabled={!!gambleSelected} onClick={() => gambleSelect("B")}>
+            <button disabled={!!gambleChoice} onClick={() => gambleSelect("B")}>
               B버튼: 선택한 사람과 나눠 갖기
             </button>
-            <button disabled={!!gambleSelected} onClick={() => gambleSelect("C")}>
-              C버튼: 혼자 선택 시 5원 얻기 (2명 이상 0원)
+            <button disabled={!!gambleChoice} onClick={() => gambleSelect("C")}>
+              C버튼: 혼자 선택 시 10원 얻기 (2명 이상 0원)
             </button>
           </div>
-          {gambleSelected && <p>선택 완료: {gambleSelected} 버튼</p>}
+          {gambleChoice && <p>선택 완료: {gambleChoice} 버튼</p>}
         </div>
       )}
 
-      {/* 눈치 보고 도박하기 라운드 결과 */}
-      {status === "gamble_round_result" && selectedGame === "gamble" && (
-        <div>
-          <h4>라운드 {gambleRound} 결과</h4>
-          <ol>
-            {gambleResults.map((r) => (
-              <li key={r.id}>
-                {r.name} : {r.score}원
-              </li>
-            ))}
-          </ol>
-          <p>잠시 후 다음 라운드가 시작됩니다...</p>
-        </div>
-      )}
-
-      {/* 눈치 보고 도박하기 최종 결과 */}
-      {status === "gamble_game_result" && selectedGame === "gamble" && (
-        <div>
-          <h4>최종 결과</h4>
-          <ol>
-            {gambleResults.map((r, i) => (
-              <li key={r.id}>
-                {i + 1}위 - {r.name} : {r.score}원
-              </li>
-            ))}
-          </ol>
-          {isHost && <button onClick={restartGame}>다시 시작</button>}
-        </div>
-      )}
+      {/* 눈치 보고 도박하기 결과 */}
+      {(status === "gamble_result" || status === "gamble_game_result") &&
+        selectedGame === "gamble" && (
+          <div>
+            <h4>{status === "gamble_game_result" ? "최종 결과" : `라운드 ${gambleRound} 결과`}</h4>
+            <ol>
+              {Object.entries(gambleScores)
+                .sort((a, b) => b[1] - a[1])
+                .map(([id, score]) => {
+                  const user = users.find((u) => u.id === id);
+                  return (
+                    <li key={id}>
+                      {user?.name || "알수없음"} : {score}원
+                    </li>
+                  );
+                })}
+            </ol>
+            {isHost && <button onClick={restartGame}>다시 시작</button>}
+          </div>
+        )}
     </div>
   );
 }
