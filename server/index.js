@@ -1,160 +1,186 @@
-import express from "express";
-import http from "http";
-import { Server } from "socket.io";
-import cors from "cors";
+import { useState, useEffect } from "react";
+import { io } from "socket.io-client";
+import "./Lobby.css";
 
-const app = express();
-app.use(cors());
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-});
+const socket = io("https://nunchi-game-server.onrender.com");
 
-const rooms = {};
+export default function Lobby() {
+  const [nickname, setNickname] = useState("");
+  const [nicknameConfirmed, setNicknameConfirmed] = useState(false);
+  const [roomCode, setRoomCode] = useState("");
+  const [inRoom, setInRoom] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [isHost, setIsHost] = useState(false);
+  const [status, setStatus] = useState("lobby");
+  const [results, setResults] = useState([]);
+  const [canClick, setCanClick] = useState(false);
+  const [selectedGame, setSelectedGame] = useState("reaction");
+  const [roomList, setRoomList] = useState([]);
 
-function generateRoomCode() {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
-}
-
-io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
-
-  socket.on("create_room", ({ nickname }, callback) => {
-    console.log("[create_room] 방 생성 요청 받음, 닉네임:", nickname);
-    const code = generateRoomCode();
-    const roomName = `${nickname}님의 방`;
-    rooms[code] = {
-      name: roomName,
-      host: socket.id,
-      users: [{ id: socket.id, name: nickname }],
-      started: false,
-      results: [],
-      readyTime: null,
-    };
-    socket.join(code);
-    console.log("[create_room] 방 생성 완료, 코드:", code);
-    callback({ success: true, code });
-    io.to(code).emit("room_update", rooms[code].users);
-    io.emit("room_list", getRoomList());
-  });
-
-  socket.on("join_room", ({ code, nickname }, callback) => {
-    console.log(`[join_room] ${nickname} 님이 방 ${code} 입장 요청`);
-    const room = rooms[code];
-    if (room && !room.started) {
-      room.users.push({ id: socket.id, name: nickname });
-      socket.join(code);
-      console.log(`[join_room] 입장 성공: ${nickname} 님이 방 ${code}에 입장`);
-      callback({ success: true });
-      io.to(code).emit("room_update", room.users);
-    } else {
-      console.log(`[join_room] 입장 실패: 방 없음 또는 이미 게임 시작됨 - 코드: ${code}`);
-      callback({ success: false, message: "Invalid room code or game already started." });
-    }
-  });
-
-  socket.on("get_room_list", () => {
-    console.log("[get_room_list] 방 목록 요청");
-    socket.emit("room_list", getRoomList());
-  });
-
-  socket.on("start_game", ({ code, game }) => {
-    console.log(`[start_game] 게임 시작 요청 - 방: ${code}, 게임: ${game}`);
-    const room = rooms[code];
-    if (!room || socket.id !== room.host) return;
-
-    const delay = Math.floor(Math.random() * 10000) + 1000;
-    room.started = true;
-    room.results = [];
-
-    io.to(code).emit("game_waiting");
-    console.log(`[start_game] 대기 상태 전송 - 방: ${code}, 대기시간: ${delay}ms`);
-
-    setTimeout(() => {
-      room.readyTime = Date.now();
-      io.to(code).emit("game_go");
-      console.log(`[start_game] 게임 시작 신호 전송 - 방: ${code}`);
-    }, delay);
-  });
-
-  socket.on("click_button", (code) => {
-    console.log(`[click_button] 클릭 요청 - 방: ${code}, 소켓: ${socket.id}`);
-    const room = rooms[code];
-    if (!room || !room.started) {
-      console.log("[click_button] 실패: 방 없음 또는 게임 미시작");
+  const createRoom = () => {
+    if (nickname.trim() === "") {
+      alert("닉네임을 먼저 입력해주세요.");
       return;
     }
-
-    const alreadyClicked = room.results.find((r) => r.id === socket.id);
-    if (alreadyClicked) {
-      console.log("[click_button] 이미 클릭한 사용자");
-      return;
-    }
-
-    const now = Date.now();
-    const user = room.users.find((u) => u.id === socket.id);
-    const timeDiff = now - (room.readyTime || now);
-
-    if (!room.readyTime) {
-      room.results.push({ id: socket.id, name: user.name, status: "실격", time: null });
-      console.log(`[click_button] 실격 처리 - 사용자: ${user.name}`);
-    } else {
-      room.results.push({ id: socket.id, name: user.name, status: "성공", time: timeDiff });
-      console.log(`[click_button] 성공 처리 - 사용자: ${user.name}, 시간: ${timeDiff}ms`);
-    }
-
-    if (room.results.length === room.users.length) {
-      const final = room.results.sort((a, b) => {
-        if (a.status === "실격" && b.status !== "실격") return 1;
-        if (b.status === "실격" && a.status !== "실격") return -1;
-        return a.time - b.time;
-      });
-      io.to(code).emit("game_result", final);
-      room.started = false;
-      console.log(`[click_button] 게임 결과 전송 - 방: ${code}`);
-    }
-  });
-
-  socket.on("restart_game", (code) => {
-    console.log(`[restart_game] 게임 재시작 요청 - 방: ${code}`);
-    const room = rooms[code];
-    if (!room || socket.id !== room.host) return;
-
-    room.started = false;
-    room.results = [];
-    room.readyTime = null;
-    io.to(code).emit("game_reset");
-    console.log(`[restart_game] 게임 초기화 완료 - 방: ${code}`);
-  });
-
-  socket.on("disconnecting", () => {
-    console.log(`[disconnecting] 소켓 연결 해제 중: ${socket.id}`);
-    for (const room of socket.rooms) {
-      const r = rooms[room];
-      if (r) {
-        r.users = r.users.filter((u) => u.id !== socket.id);
-        if (r.users.length === 0) {
-          delete rooms[room];
-          console.log(`[disconnecting] 방 삭제됨: ${room}`);
-        } else {
-          io.to(room).emit("room_update", r.users);
-          console.log(`[disconnecting] 방 인원 업데이트: ${room}`);
-        }
+    const generatedRoomName = `${nickname}님의 방`;
+    socket.emit("create_room", { nickname, roomName: generatedRoomName }, ({ success, code, message }) => {
+      if (success) {
+        setRoomCode(code);
+        setInRoom(true);
+        setIsHost(true);
+      } else {
+        alert(message || "방 생성에 실패했습니다.");
       }
+    });
+  };
+
+  const joinRoom = () => {
+    socket.emit("join_room", { code: roomCode, nickname }, ({ success, message }) => {
+      if (success) setInRoom(true);
+      else alert(message);
+    });
+  };
+
+  const joinRoomFromList = (code) => {
+    setRoomCode(code);
+    joinRoom();
+  };
+
+  const startGame = () => {
+    socket.emit("start_game", { code: roomCode, game: selectedGame });
+  };
+
+  const restartGame = () => {
+    socket.emit("restart_game", roomCode);
+  };
+
+  const clickButton = () => {
+    if (!canClick && status === "waiting") {
+      socket.emit("click_button", roomCode, true);
+    } else if (canClick && status === "go") {
+      socket.emit("click_button", roomCode, false);
     }
-    io.emit("room_list", getRoomList());
-  });
-});
+  };
 
-function getRoomList() {
-  return Object.entries(rooms).map(([code, room]) => ({
-    code,
-    name: room.name || "이름 없는 방",
-    count: room.users.length,
-  }));
+  useEffect(() => {
+    document.title = "🌲 미니 게임 포레스트";
+  }, []);
+
+  useEffect(() => {
+    socket.on("room_update", (userList) => setUsers(userList));
+    socket.on("game_waiting", () => {
+      setStatus("waiting");
+      setCanClick(false);
+    });
+    socket.on("game_go", () => {
+      setStatus("go");
+      setCanClick(true);
+    });
+    socket.on("game_result", (data) => {
+      setResults(data);
+      setStatus("result");
+      setCanClick(false);
+    });
+    socket.on("game_reset", () => {
+      setResults([]);
+      setStatus("lobby");
+      setCanClick(false);
+    });
+    socket.on("room_list", (list) => setRoomList(list));
+    socket.emit("get_room_list");
+  }, []);
+
+  if (!nicknameConfirmed) {
+    return (
+      <div className="container">
+        <h1>🌲 미니 게임 포레스트</h1>
+        <h2>닉네임을 입력하세요</h2>
+        <input
+          placeholder="닉네임 (최대 20자)"
+          value={nickname}
+          maxLength={20}
+          onChange={e => setNickname(e.target.value)}
+        />
+        <button onClick={() => {
+          if (nickname.trim() === "") alert("닉네임을 입력하세요");
+          else setNicknameConfirmed(true);
+        }}>입력 완료</button>
+      </div>
+    );
+  }
+
+  if (!inRoom) {
+    return (
+      <div className="container">
+        <h1>🌲 미니 게임 포레스트</h1>
+        <button onClick={createRoom}>방 만들기</button>
+        <input placeholder="초대 코드" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
+        <button onClick={joinRoom}>입장</button>
+
+        <h3>참여 가능한 방</h3>
+        <ul>
+          {roomList.map((room) => (
+            <li key={room.code}>
+              <button onClick={() => joinRoomFromList(room.code)}>
+                {room.name} ({room.code}) - 인원: {room.count}명
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container">
+      <h1>🌲 미니 게임 포레스트</h1>
+      <h3>방 코드: {roomCode}</h3>
+      <p>현재 입장한 인원: {users.length}명</p>
+      <ul>
+        {users.map(u => (
+          <li key={u.id}>{u.name}</li>
+        ))}
+      </ul>
+
+      {status === "lobby" && isHost && (
+        <>
+          <p>게임을 선택해 주세요.</p>
+          <select
+            value={selectedGame}
+            onChange={(e) => setSelectedGame(e.target.value)}
+            style={{ fontSize: "1rem", padding: "0.3rem" }}
+          >
+            <option value="reaction">반응속도 테스트</option>
+          </select>
+          <div style={{ marginTop: '0.5rem' }}>
+            <button onClick={startGame}>게임 시작</button>
+          </div>
+        </>
+      )}
+
+      {(status === "waiting" || status === "go") && (
+        <>
+          <p style={{ minHeight: "2em", fontSize: "1rem" }}>
+            {status === "waiting" && "곧 버튼을 누르라는 문구가 표시됩니다..."}
+            {status === "go" && "버튼을 누르세요!"}
+          </p>
+          <button onClick={clickButton}>버튼</button>
+        </>
+      )}
+
+      {status === "result" && (
+        <div>
+          <h4>결과</h4>
+          <ol>
+            {results.map((r, i) => (
+              <li key={r.id} className={r.status === "실격" ? "disqualified" : "qualified"}>
+                {r.name} - {r.status}{r.time !== null ? ` (${r.time}ms)` : ""}
+              </li>
+            ))}
+          </ol>
+          {isHost && <button onClick={restartGame}>다시 시작</button>}
+        </div>
+      )}
+    </div>
+  );
 }
-
-server.listen(3000, () => console.log("Server running on http://localhost:3000"));
