@@ -199,6 +199,15 @@ export default function Lobby() {
   return (
     <div className="container">
       <h1>🌲 미니 게임 포레스트</h1>
+
+      {/* 현재 진행중인 게임명 표시 */}
+      {status !== "lobby" && status !== "result" && (
+        <h2>
+          현재 진행중인 게임:{" "}
+          {selectedGame === "reaction" ? "반응속도 테스트" : "눈치 보고 도박하기"}
+        </h2>
+      )}
+
       <h3>방 코드: {roomCode}</h3>
       <p>현재 입장한 인원: {users.length}명</p>
       <ul>
@@ -207,6 +216,7 @@ export default function Lobby() {
         ))}
       </ul>
 
+      {/* 게임 선택 및 시작 (호스트만) */}
       {status === "lobby" && isHost && (
         <>
           <p>게임을 선택해 주세요.</p>
@@ -224,7 +234,7 @@ export default function Lobby() {
         </>
       )}
 
-      {/* 반응속도 테스트 진행 */}
+      {/* 반응속도 테스트 게임 진행중 */}
       {(status === "waiting" || status === "go") && selectedGame === "reaction" && (
         <>
           <p style={{ minHeight: "2em", fontSize: "1rem" }}>
@@ -254,7 +264,7 @@ export default function Lobby() {
         </div>
       )}
 
-      {/* 눈치 보고 도박하기 진행 중 */}
+      {/* 눈치 보고 도박하기 게임 진행 중 */}
       {status === "gamble_playing" && selectedGame === "gamble" && (
         <div>
           <h4>라운드 {gambleRound} / 5</h4>
