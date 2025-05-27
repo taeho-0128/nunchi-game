@@ -9,8 +9,8 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: "*",
-    methods: ["GET", "POST"]
-  }
+    methods: ["GET", "POST"],
+  },
 });
 
 const rooms = {};
@@ -22,18 +22,20 @@ function generateRoomCode() {
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  socket.on("create_room", (nickname, callback) => {
+  socket.on("create_room", ({ nickname }, callback) => {
     const code = generateRoomCode();
     rooms[code] = {
+      name: null, // 방 이름 없이 null
       host: socket.id,
       users: [{ id: socket.id, name: nickname }],
       started: false,
       results: [],
-      readyTime: null
+      readyTime: null,
     };
     socket.join(code);
     callback({ success: true, code });
     io.to(code).emit("room_update", rooms[code].users);
+    io.emit("room_list", getRoomList());
   });
 
   socket.on("join_room", ({ code, nickname }, callback) => {
@@ -48,7 +50,11 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("start_game", (code) => {
+  socket.on("get_room_list", () => {
+    socket.emit("room_list", getRoomList());
+  });
+
+  socket.on("start_game", ({ code, game }) => {
     const room = rooms[code];
     if (!room || socket.id !== room.host) return;
 
@@ -68,11 +74,11 @@ io.on("connection", (socket) => {
     const room = rooms[code];
     if (!room || !room.started) return;
 
-    const alreadyClicked = room.results.find(r => r.id === socket.id);
+    const alreadyClicked = room.results.find((r) => r.id === socket.id);
     if (alreadyClicked) return;
 
     const now = Date.now();
-    const user = room.users.find(u => u.id === socket.id);
+    const user = room.users.find((u) => u.id === socket.id);
     const timeDiff = now - (room.readyTime || now);
 
     if (!room.readyTime) {
@@ -106,12 +112,24 @@ io.on("connection", (socket) => {
     for (const room of socket.rooms) {
       const r = rooms[room];
       if (r) {
-        r.users = r.users.filter(u => u.id !== socket.id);
-        if (r.users.length === 0) delete rooms[room];
-        else io.to(room).emit("room_update", r.users);
+        r.users = r.users.filter((u) => u.id !== socket.id);
+        if (r.users.length === 0) {
+          delete rooms[room];
+        } else {
+          io.to(room).emit("room_update", r.users);
+        }
       }
     }
+    io.emit("room_list", getRoomList());
   });
 });
+
+function getRoomList() {
+  return Object.entries(rooms).map(([code, room]) => ({
+    code,
+    name: room.name || "이름 없는 방",
+    count: room.users.length,
+  }));
+}
 
 server.listen(3000, () => console.log("Server running on http://localhost:3000"));

@@ -10,7 +10,6 @@ export default function Lobby() {
   const [nickname, setNickname] = useState("");
   const [nicknameConfirmed, setNicknameConfirmed] = useState(false);
   const [roomCode, setRoomCode] = useState("");
-  const [roomName, setRoomName] = useState("");
   const [inRoom, setInRoom] = useState(false);
   const [users, setUsers] = useState([]);
   const [isHost, setIsHost] = useState(false);
@@ -20,13 +19,9 @@ export default function Lobby() {
   const [selectedGame, setSelectedGame] = useState("reaction");
   const [roomList, setRoomList] = useState([]);
 
-  // 방 만들때 직접 방 이름 입력 받는 구조
+  // 방 이름 없이 단순 방 생성
   const createRoom = () => {
-    if (roomName.trim() === "") {
-      alert("방 이름을 입력하세요");
-      return;
-    }
-    socket.emit("create_room", { nickname, roomName }, ({ success, code }) => {
+    socket.emit("create_room", { nickname }, ({ success, code }) => {
       if (success) {
         setRoomCode(code);
         setIsHost(true);
@@ -98,12 +93,16 @@ export default function Lobby() {
           placeholder="닉네임 (최대 20자)"
           value={nickname}
           maxLength={20}
-          onChange={e => setNickname(e.target.value)}
+          onChange={(e) => setNickname(e.target.value)}
         />
-        <button onClick={() => {
-          if (nickname.trim() === "") alert("닉네임을 입력하세요");
-          else setNicknameConfirmed(true);
-        }}>입력 완료</button>
+        <button
+          onClick={() => {
+            if (nickname.trim() === "") alert("닉네임을 입력하세요");
+            else setNicknameConfirmed(true);
+          }}
+        >
+          입력 완료
+        </button>
       </div>
     );
   }
@@ -112,14 +111,12 @@ export default function Lobby() {
     return (
       <div className="container">
         <h1>🌲 미니 게임 포레스트</h1>
-        <input
-          placeholder="방 이름 (최대 20자)"
-          value={roomName}
-          maxLength={20}
-          onChange={e => setRoomName(e.target.value)}
-        />
         <button onClick={createRoom}>방 만들기</button>
-        <input placeholder="초대 코드" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
+        <input
+          placeholder="초대 코드"
+          value={roomCode}
+          onChange={(e) => setRoomCode(e.target.value)}
+        />
         <button onClick={joinRoom}>입장</button>
 
         <h3>참여 가능한 방</h3>
@@ -142,7 +139,7 @@ export default function Lobby() {
       <h3>방 코드: {roomCode}</h3>
       <p>현재 입장한 인원: {users.length}명</p>
       <ul>
-        {users.map(u => (
+        {users.map((u) => (
           <li key={u.id}>{u.name}</li>
         ))}
       </ul>
@@ -157,7 +154,7 @@ export default function Lobby() {
           >
             <option value="reaction">반응속도 테스트</option>
           </select>
-          <div style={{ marginTop: '0.5rem' }}>
+          <div style={{ marginTop: "0.5rem" }}>
             <button onClick={startGame}>게임 시작</button>
           </div>
         </>
@@ -182,7 +179,8 @@ export default function Lobby() {
                 key={r.id}
                 className={r.status === "실격" ? "disqualified" : "qualified"}
               >
-                {r.name} - {r.status}{r.time !== null ? ` (${r.time}ms)` : ""}
+                {r.name} - {r.status}
+                {r.time !== null ? ` (${r.time}ms)` : ""}
               </li>
             ))}
           </ol>
