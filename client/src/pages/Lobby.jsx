@@ -18,6 +18,7 @@ export default function Lobby() {
   const [status, setStatus] = useState("lobby");
   const [results, setResults] = useState([]);
   const [canClick, setCanClick] = useState(false);
+  const [selectedGame, setSelectedGame] = useState("reaction");
 
   const createRoom = () => {
     socket.emit("create_room", nickname, ({ success, code }) => {
@@ -37,7 +38,7 @@ export default function Lobby() {
   };
 
   const startGame = () => {
-    socket.emit("start_game", roomCode);
+    socket.emit("start_game", { code: roomCode, game: selectedGame });
   };
 
   const restartGame = () => {
@@ -46,9 +47,9 @@ export default function Lobby() {
 
   const clickButton = () => {
     if (!canClick && status === "waiting") {
-      socket.emit("click_button", roomCode, true); // 조기 클릭
+      socket.emit("click_button", roomCode, true);
     } else if (canClick && status === "go") {
-      socket.emit("click_button", roomCode, false); // 정상 클릭
+      socket.emit("click_button", roomCode, false);
     }
   };
 
@@ -113,7 +114,16 @@ export default function Lobby() {
         ))}
       </ul>
 
-      {status === "lobby" && isHost && <button onClick={startGame}>게임 시작</button>}
+      {status === "lobby" && isHost && (
+        <>
+          <p>게임을 선택해 주세요.</p>
+          <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)}>
+            <option value="reaction">반응속도 테스트</option>
+            {/* 다른 게임이 추가되면 아래에 option을 추가 */}
+          </select>
+          <button onClick={startGame}>게임 시작</button>
+        </>
+      )}
 
       {(status === "waiting" || status === "go") && (
         <>
