@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
 import "./Lobby.css";
 
@@ -13,18 +13,16 @@ export default function Lobby() {
   const [inRoom, setInRoom] = useState(false);
   const [users, setUsers] = useState([]);
   const [isHost, setIsHost] = useState(false);
-  const [status, setStatus] = useState("lobby"); // lobby, waiting, go, result, gamble_playing, gamble_result
+  const [status, setStatus] = useState("lobby");
   const [results, setResults] = useState([]);
   const [canClick, setCanClick] = useState(false);
   const [selectedGame, setSelectedGame] = useState("reaction");
   const [roomList, setRoomList] = useState([]);
-
-  // 도박 게임 상태
-  const [gambleRound, setGambleRound] = useState(0);
-  const [gambleScores, setGambleScores] = useState({});
-  const [gambleChoice, setGambleChoice] = useState(null);
-  const [gambleTimer, setGambleTimer] = useState(15);
-  const gambleTimerRef = useRef(null);
+  const [round, setRound] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(15);
+  const [selectedButton, setSelectedButton] = useState(null);
+  const [totalCoins, setTotalCoins] = useState(0);
+  const [lastCoins, setLastCoins] = useState(0);
 
   const createRoom = () => {
     const generatedRoomName = `${nickname}님의 방`;
@@ -57,34 +55,37 @@ export default function Lobby() {
 
   const restartGame = () => {
     socket.emit("restart_game", roomCode);
-    setStatus("lobby");
-    setResults([]);
-    setGambleScores({});
-    setGambleChoice(null);
-    setGambleRound(0);
-    if (gambleTimerRef.current) clearInterval(gambleTimerRef.current);
-    setGambleTimer(15);
+    setSelectedButton(null);
+    setRound(0);
+    setLastCoins(0);
+    setTotalCoins(0);
   };
 
-  const clickButton = () => {
-    if (!canClick && status === "waiting") {
-      socket.emit("click_button", roomCode, true);
-    } else if (canClick && status === "go") {
-      socket.emit("click_button", roomCode, false);
+  const clickButton = (button) => {
+    if (!canClick) return;
+    if (selectedButton) return; // 이미 선택했으면 무시
+    setSelectedButton(button);
+    socket.emit("click_button", roomCode, button);
+  };
+
+  useEffect(() => {
+    let timer;
+    if ((status === "waiting" || status === "go") && timeLeft > 0) {
+      timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+    } else if (timeLeft === 0 && canClick) {
+      setCanClick(false);
+      setSelectedButton(null); // 제한시간 초과하면 선택 초기화
     }
-  };
-
-  const gambleSelect = (btn) => {
-    if (gambleChoice || status !== "gamble_playing") return;
-    setGambleChoice(btn);
-    socket.emit("gamble_choice", { code: roomCode, choice: btn });
-  };
+    return () => clearTimeout(timer);
+  }, [timeLeft, status, canClick]);
 
   useEffect(() => {
     socket.on("room_update", (userList) => setUsers(userList));
     socket.on("game_waiting", () => {
       setStatus("waiting");
       setCanClick(false);
+      setTimeLeft(15);
+      setSelectedButton(null);
     });
     socket.on("game_go", () => {
       setStatus("go");
@@ -94,58 +95,37 @@ export default function Lobby() {
       setResults(data);
       setStatus("result");
       setCanClick(false);
+      setRound((r) => r + 1);
+
+      // 내 결과 찾아서 lastCoins와 totalCoins 업데이트
+      const me = data.find(r => r.id === socket.id);
+      if (me) {
+        setLastCoins(me.roundCoins || 0);
+        setTotalCoins(me.totalCoins || 0);
+      }
+
+      if (round + 1 < 5) {
+        setTimeout(() => {
+          socket.emit("next_round", roomCode);
+          setStatus("waiting");
+          setCanClick(false);
+          setTimeLeft(15);
+          setSelectedButton(null);
+        }, 3000); // 3초 뒤에 다음 라운드 준비
+      }
     });
     socket.on("game_reset", () => {
       setResults([]);
       setStatus("lobby");
       setCanClick(false);
-      setGambleScores({});
-      setGambleChoice(null);
-      setGambleRound(0);
-      if (gambleTimerRef.current) clearInterval(gambleTimerRef.current);
-      setGambleTimer(15);
+      setRound(0);
+      setSelectedButton(null);
+      setLastCoins(0);
+      setTotalCoins(0);
     });
     socket.on("room_list", (list) => setRoomList(list));
     socket.emit("get_room_list");
-
-    // 도박 게임 이벤트
-    socket.on("gamble_start", ({ round }) => {
-      setStatus("gamble_playing");
-      setGambleRound(round);
-      setGambleChoice(null);
-      setGambleScores({});
-      setGambleTimer(15);
-      if (gambleTimerRef.current) clearInterval(gambleTimerRef.current);
-      gambleTimerRef.current = setInterval(() => {
-        setGambleTimer((t) => {
-          if (t <= 1) {
-            clearInterval(gambleTimerRef.current);
-            return 0;
-          }
-          return t - 1;
-        });
-      }, 1000);
-    });
-
-    socket.on("gamble_scores", (scores) => {
-      setGambleScores(scores);
-      setStatus("gamble_result");
-      if (gambleTimerRef.current) clearInterval(gambleTimerRef.current);
-      setGambleTimer(0);
-    });
-
-    return () => {
-      socket.off("room_update");
-      socket.off("game_waiting");
-      socket.off("game_go");
-      socket.off("game_result");
-      socket.off("game_reset");
-      socket.off("room_list");
-      socket.off("gamble_start");
-      socket.off("gamble_scores");
-      if (gambleTimerRef.current) clearInterval(gambleTimerRef.current);
-    };
-  }, []);
+  }, [round, roomCode]);
 
   if (!nicknameConfirmed) {
     return (
@@ -154,18 +134,14 @@ export default function Lobby() {
         <h2>닉네임을 입력하세요</h2>
         <input
           placeholder="닉네임 (최대 20자)"
-          maxLength={20}
           value={nickname}
-          onChange={(e) => setNickname(e.target.value)}
+          maxLength={20}
+          onChange={e => setNickname(e.target.value)}
         />
-        <button
-          onClick={() => {
-            if (nickname.trim() === "") alert("닉네임을 입력하세요");
-            else setNicknameConfirmed(true);
-          }}
-        >
-          입력 완료
-        </button>
+        <button onClick={() => {
+          if (nickname.trim() === "") alert("닉네임을 입력하세요");
+          else setNicknameConfirmed(true);
+        }}>입력 완료</button>
       </div>
     );
   }
@@ -175,11 +151,7 @@ export default function Lobby() {
       <div className="container">
         <h1>🌲 미니 게임 포레스트</h1>
         <button onClick={createRoom}>방 만들기</button>
-        <input
-          placeholder="초대 코드"
-          value={roomCode}
-          onChange={(e) => setRoomCode(e.target.value)}
-        />
+        <input placeholder="초대 코드" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
         <button onClick={joinRoom}>입장</button>
 
         <h3>참여 가능한 방</h3>
@@ -199,112 +171,71 @@ export default function Lobby() {
   return (
     <div className="container">
       <h1>🌲 미니 게임 포레스트</h1>
-
-      {/* 현재 진행중인 게임명 표시 */}
-      {status !== "lobby" && status !== "result" && (
-        <h2>
-          현재 진행중인 게임:{" "}
-          {selectedGame === "reaction" ? "반응속도 테스트" : "눈치 보고 도박하기"}
-        </h2>
-      )}
-
+      <h3>현재 진행중인 게임: {selectedGame === "reaction" ? "반응속도 테스트" : "눈치 보고 도박하기"}</h3>
       <h3>방 코드: {roomCode}</h3>
       <p>현재 입장한 인원: {users.length}명</p>
       <ul>
-        {users.map((u) => (
-          <li key={u.id}>{u.name}</li>
+        {users.map(u => (
+          <li key={u.id}>{u.name} {results.find(r => r.id === u.id) ? `- 이번 라운드 획득: ${results.find(r => r.id === u.id).roundCoins || 0}원` : ""}</li>
         ))}
       </ul>
 
-      {/* 게임 선택 및 시작 (호스트만) */}
       {status === "lobby" && isHost && (
         <>
           <p>게임을 선택해 주세요.</p>
-          <select
-            value={selectedGame}
-            onChange={(e) => setSelectedGame(e.target.value)}
-            style={{ fontSize: "1rem", padding: "0.3rem" }}
-          >
+          <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)} style={{ fontSize: "1rem", padding: "0.3rem" }}>
             <option value="reaction">반응속도 테스트</option>
             <option value="gamble">눈치 보고 도박하기</option>
           </select>
-          <div style={{ marginTop: "0.5rem" }}>
+          <div style={{ marginTop: '0.5rem' }}>
             <button onClick={startGame}>게임 시작</button>
           </div>
         </>
       )}
 
-      {/* 반응속도 테스트 게임 진행중 */}
       {(status === "waiting" || status === "go") && selectedGame === "reaction" && (
         <>
           <p style={{ minHeight: "2em", fontSize: "1rem" }}>
             {status === "waiting" && "곧 버튼을 누르라는 문구가 표시됩니다..."}
             {status === "go" && "버튼을 누르세요!"}
           </p>
-          <button onClick={clickButton}>버튼</button>
+          <button onClick={() => socket.emit("click_button", roomCode)}>버튼</button>
         </>
       )}
 
-      {/* 반응속도 테스트 결과 */}
-      {status === "result" && selectedGame === "reaction" && (
+      {(status === "waiting" || status === "go") && selectedGame === "gamble" && (
+        <>
+          <p>라운드 {round + 1} / 5</p>
+          <p>15초 안에 버튼 하나를 선택하세요.</p>
+          <p>남은 시간: {timeLeft}초</p>
+          <div style={{ display: "flex", justifyContent: "center", gap: "1rem" }}>
+            <button disabled={!canClick || selectedButton !== null} onClick={() => clickButton("A")}>
+              5원 얻기
+            </button>
+            <button disabled={!canClick || selectedButton !== null} onClick={() => clickButton("B")}>
+              선택한 사람과 {Math.floor(users.length / 2) * 5}원 나눠 갖기
+            </button>
+            <button disabled={!canClick || selectedButton !== null} onClick={() => clickButton("C")}>
+              혼자 선택 시 10원 얻기 (2명 이상 0원)
+            </button>
+          </div>
+          {selectedButton && <p>선택 완료: {selectedButton} 버튼</p>}
+        </>
+      )}
+
+      {status === "result" && (
         <div>
           <h4>결과</h4>
           <ol>
-            {results.map((r) => (
-              <li
-                key={r.id}
-                className={r.status === "실격" ? "disqualified" : "qualified"}
-              >
-                {r.name} - {r.status}
-                {r.time !== null ? ` (${r.time}ms)` : ""}
+            {results.map((r, i) => (
+              <li key={r.id} className={r.status === "실격" ? "disqualified" : "qualified"}>
+                {r.name} - {r.status} {r.time !== null ? `(${r.time}ms)` : ""} 획득: {r.totalCoins || 0}원
               </li>
             ))}
           </ol>
           {isHost && <button onClick={restartGame}>다시 시작</button>}
         </div>
       )}
-
-      {/* 눈치 보고 도박하기 게임 진행 중 */}
-      {status === "gamble_playing" && selectedGame === "gamble" && (
-        <div>
-          <h4>라운드 {gambleRound} / 5</h4>
-          <p>15초 안에 버튼 하나를 선택하세요.</p>
-          <p>남은 시간: {gambleTimer}초</p>
-          <div style={{ display: "flex", gap: "1rem" }}>
-            <button disabled={!!gambleChoice} onClick={() => gambleSelect("A")}>
-              A버튼: 5원 얻기
-            </button>
-            <button disabled={!!gambleChoice} onClick={() => gambleSelect("B")}>
-              B버튼: 선택한 사람과 나눠 갖기
-            </button>
-            <button disabled={!!gambleChoice} onClick={() => gambleSelect("C")}>
-              C버튼: 혼자 선택 시 10원 얻기 (2명 이상 0원)
-            </button>
-          </div>
-          {gambleChoice && <p>선택 완료: {gambleChoice} 버튼</p>}
-        </div>
-      )}
-
-      {/* 눈치 보고 도박하기 결과 */}
-      {(status === "gamble_result" || status === "gamble_game_result") &&
-        selectedGame === "gamble" && (
-          <div>
-            <h4>{status === "gamble_game_result" ? "최종 결과" : `라운드 ${gambleRound} 결과`}</h4>
-            <ol>
-              {Object.entries(gambleScores)
-                .sort((a, b) => b[1] - a[1])
-                .map(([id, score]) => {
-                  const user = users.find((u) => u.id === id);
-                  return (
-                    <li key={id}>
-                      {user?.name || "알수없음"} : {score}원
-                    </li>
-                  );
-                })}
-            </ol>
-            {isHost && <button onClick={restartGame}>다시 시작</button>}
-          </div>
-        )}
     </div>
   );
 }
