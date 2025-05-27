@@ -80,12 +80,15 @@ export default function Lobby() {
 
   const clickButton = (button) => {
     if (!canClick) return;
-    if (selectedButton) return; // 이미 선택했으면 무시
+    if (selectedButton) return;
     setSelectedButton(button);
-    socket.emit("click_button", roomCode, button);
+    if (selectedGame === "reaction") {
+      socket.emit("click_button", roomCode);
+    } else if (selectedGame === "gamble") {
+      socket.emit("gamble_choice", { code: roomCode, choice: button });
+    }
   };
 
-  // 타이머 관리
   useEffect(() => {
     if ((status === "waiting" || status === "go") && timeLeft > 0) {
       timerRef.current = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
@@ -96,7 +99,6 @@ export default function Lobby() {
     return () => clearTimeout(timerRef.current);
   }, [timeLeft, status, canClick]);
 
-  // 소켓 이벤트 등록 (마운트 시 1회만)
   useEffect(() => {
     socket.on("connect", () => {
       setSocketId(socket.id);
@@ -104,7 +106,9 @@ export default function Lobby() {
 
     socket.on("room_update", (userList) => setUsers(userList));
 
+    // 반응속도 테스트 이벤트
     socket.on("game_waiting", () => {
+      if (selectedGame !== "reaction") return;
       setStatus("waiting");
       setCanClick(false);
       setTimeLeft(15);
@@ -112,21 +116,65 @@ export default function Lobby() {
     });
 
     socket.on("game_go", () => {
+      if (selectedGame !== "reaction") return;
       setStatus("go");
       setCanClick(true);
     });
 
     socket.on("game_result", (data) => {
+      if (selectedGame !== "reaction") return;
       setResults(data);
       setStatus("result");
       setCanClick(false);
+    });
 
-      // 내 결과 찾아서 lastCoins와 totalCoins 업데이트
-      const me = data.find((r) => r.id === socketId);
-      if (me) {
-        setLastCoins(me.roundCoins || 0);
-        setTotalCoins(me.totalCoins || 0);
-      }
+    // 눈치보고 도박하기 이벤트
+    socket.on("gamble_start", ({ round }) => {
+      if (selectedGame !== "gamble") return;
+      setRound(round);
+      setStatus("waiting");
+      setCanClick(false);
+      setTimeLeft(15);
+      setSelectedButton(null);
+    });
+
+    socket.on("gamble_round_start", ({ round }) => {
+      if (selectedGame !== "gamble") return;
+      setRound(round);
+      setStatus("waiting");
+      setCanClick(false);
+      setTimeLeft(15);
+      setSelectedButton(null);
+    });
+
+    socket.on("gamble_next_round", ({ round }) => {
+      if (selectedGame !== "gamble") return;
+      setRound(round);
+      setStatus("waiting");
+      setCanClick(false);
+      setTimeLeft(15);
+      setSelectedButton(null);
+    });
+
+    socket.on("gamble_scores", (scores) => {
+      if (selectedGame !== "gamble") return;
+      setResults(
+        Object.entries(scores).map(([id, score]) => {
+          const user = users.find((u) => u.id === id);
+          return {
+            id,
+            name: user ? user.name : "알 수 없음",
+            score,
+          };
+        })
+      );
+    });
+
+    socket.on("game_result", (data) => {
+      if (selectedGame !== "gamble") return;
+      setResults(data);
+      setStatus("result");
+      setCanClick(false);
     });
 
     socket.on("game_reset", () => {
@@ -151,15 +199,19 @@ export default function Lobby() {
       socket.off("game_waiting");
       socket.off("game_go");
       socket.off("game_result");
+      socket.off("gamble_start");
+      socket.off("gamble_round_start");
+      socket.off("gamble_next_round");
+      socket.off("gamble_scores");
       socket.off("game_reset");
       socket.off("room_list");
       clearTimeout(timerRef.current);
     };
-  }, [socketId]);
+  }, [selectedGame, users]);
 
-  // round가 바뀌었을 때 다음 라운드 자동 준비 (비동기 상태 문제 방지)
+  // 눈치보고 도박하기 라운드 자동 진행 (클라이언트 타이밍 맞추기)
   useEffect(() => {
-    if (status === "result" && round < 5) {
+    if (status === "result" && selectedGame === "gamble" && round < 5) {
       const timeout = setTimeout(() => {
         socket.emit("next_round", roomCode);
         setStatus("waiting");
@@ -169,7 +221,7 @@ export default function Lobby() {
       }, 3000);
       return () => clearTimeout(timeout);
     }
-  }, [round, roomCode, status]);
+  }, [round, roomCode, status, selectedGame]);
 
   if (!nicknameConfirmed) {
     return (
@@ -246,23 +298,7 @@ export default function Lobby() {
         ))}
       </ul>
 
-      {status === "lobby" && isHost && (
-        <>
-          <p>게임을 선택해 주세요.</p>
-          <select
-            value={selectedGame}
-            onChange={(e) => setSelectedGame(e.target.value)}
-            style={{ fontSize: "1rem", padding: "0.3rem" }}
-          >
-            <option value="reaction">반응속도 테스트</option>
-            <option value="gamble">눈치 보고 도박하기</option>
-          </select>
-          <div style={{ marginTop: "0.5rem" }}>
-            <button onClick={startGame}>게임 시작</button>
-          </div>
-        </>
-      )}
-
+      {/* 반응속도 테스트 UI */}
       {(status === "waiting" || status === "go") &&
         selectedGame === "reaction" && (
           <>
@@ -270,16 +306,15 @@ export default function Lobby() {
               {status === "waiting" && "곧 버튼을 누르라는 문구가 표시됩니다..."}
               {status === "go" && "버튼을 누르세요!"}
             </p>
-            <button onClick={() => socket.emit("click_button", roomCode)}>
-              버튼
-            </button>
+            <button onClick={() => clickButton(null)}>버튼</button>
           </>
         )}
 
+      {/* 눈치보고 도박하기 UI */}
       {(status === "waiting" || status === "go") &&
         selectedGame === "gamble" && (
           <>
-            <p>라운드 {round + 1} / 5</p>
+            <p>라운드 {round} / 5</p>
             <p>15초 안에 버튼 하나를 선택하세요.</p>
             <p>남은 시간: {timeLeft}초</p>
             <div
@@ -297,9 +332,7 @@ export default function Lobby() {
               </button>
               <button
                 disabled={!canClick || selectedButton !== null}
-                onClick={() =>
-                  clickButton("B")
-                }
+                onClick={() => clickButton("B")}
               >
                 선택한 사람과 {Math.floor(users.length / 2) * 5}원 나눠 갖기
               </button>
@@ -318,18 +351,38 @@ export default function Lobby() {
         <div>
           <h4>결과</h4>
           <ol>
-            {results.map((r, i) => (
+            {results.map((r) => (
               <li
                 key={r.id}
                 className={r.status === "실격" ? "disqualified" : "qualified"}
               >
-                {r.name} - {r.status} {r.time !== null ? `(${r.time}ms)` : ""} 획득:{" "}
-                {r.totalCoins || 0}원
+                {r.name} -{" "}
+                {selectedGame === "reaction"
+                  ? `${r.status} ${r.time !== null ? `(${r.time}ms)` : ""}`
+                  : `총점: ${r.score || 0}원`}
               </li>
             ))}
           </ol>
           {isHost && <button onClick={restartGame}>다시 시작</button>}
         </div>
+      )}
+
+      {/* 게임 선택 및 시작 (방장만) */}
+      {status === "lobby" && isHost && (
+        <>
+          <p>게임을 선택해 주세요.</p>
+          <select
+            value={selectedGame}
+            onChange={(e) => setSelectedGame(e.target.value)}
+            style={{ fontSize: "1rem", padding: "0.3rem" }}
+          >
+            <option value="reaction">반응속도 테스트</option>
+            <option value="gamble">눈치 보고 도박하기</option>
+          </select>
+          <div style={{ marginTop: "0.5rem" }}>
+            <button onClick={startGame}>게임 시작</button>
+          </div>
+        </>
       )}
     </div>
   );
