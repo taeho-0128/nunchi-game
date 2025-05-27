@@ -25,13 +25,7 @@ export default function Lobby() {
       if (success) {
         setRoomCode(code);
         setIsHost(true);
-        socket.emit("join_room", { code, nickname }, ({ success: joined, message }) => {
-          if (joined) {
-            setInRoom(true);
-          } else {
-            alert(message || "방 입장에 실패했습니다.");
-          }
-        });
+        setInRoom(true);
       } else {
         alert("방 생성에 실패했습니다.");
       }
