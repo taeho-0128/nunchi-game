@@ -19,6 +19,7 @@ export default function Lobby() {
   const [selectedGame, setSelectedGame] = useState("reaction");
   const [roomList, setRoomList] = useState([]);
 
+  // 방 생성시 자동으로 "{닉네임}님의 방" 이름 생성
   const createRoom = () => {
     const generatedRoomName = `${nickname}님의 방`;
     socket.emit("create_room", { nickname, roomName: generatedRoomName }, ({ success, code }) => {
@@ -162,7 +163,7 @@ export default function Lobby() {
         <div>
           <h4>결과</h4>
           <ol>
-            {results.map((r, i) => (
+            {results.map((r) => (
               <li key={r.id} className={r.status === "실격" ? "disqualified" : "qualified"}>
                 {r.name} - {r.status}{r.time !== null ? ` (${r.time}ms)` : ""}
               </li>
